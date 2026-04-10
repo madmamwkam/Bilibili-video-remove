@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(D:/Code/Blibili收藏转移/bilibili-videos-remove/Scripts/pip list:*)",
+      "Bash(D:/Code/Blibili收藏转移/bilibili-videos-remove/Scripts/python:*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(\"./bilibili-videos-remove/Scripts/pip\" install:*)",
+      "Bash(\"./bilibili-videos-remove/Scripts/python\" -m pytest tests/test_config.py -v --timeout=10)",
+      "Bash(\"./bilibili-videos-remove/Scripts/python\" -m pytest tests/test_auth.py -v --timeout=15)",
+      "Bash(\"./bilibili-videos-remove/Scripts/python\" -m pytest tests/test_anti_ban.py -v --timeout=10)",
+      "Bash(\"./bilibili-videos-remove/Scripts/python\" -m pytest tests/test_transfer.py -v --timeout=15)",
+      "Bash(\"./bilibili-videos-remove/Scripts/python\" -m pytest tests/test_integration.py -v --timeout=15)",
+      "Bash(\"./bilibili-videos-remove/Scripts/python\" -m pytest tests/ -v --timeout=30)",
+      "Bash(bilibili-videos-remove\\\\Scripts\\\\activate)",
+      "Bash(python -m pytest tests/ -v --timeout=30)"
+    ]
+  }
+}
