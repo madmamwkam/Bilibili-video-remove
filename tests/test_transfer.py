@@ -7,6 +7,7 @@ import respx
 from src.anti_ban import CircuitBreaker, RateLimiter
 from src.api_endpoints import FAV_RESOURCE_DEAL, FAV_RESOURCE_LIST
 from src.transfer import (
+    SessionExpiredError,
     add_to_favorites,
     fetch_favorites_page,
     remove_from_favorites,
@@ -94,6 +95,20 @@ class TestFetchFavoritesPage:
             )
         assert items == []
         assert has_more is False
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_not_logged_in_raises_session_expired(self):
+        """code=-101 from list API raises SessionExpiredError."""
+        respx.get(FAV_RESOURCE_LIST).mock(
+            return_value=httpx.Response(
+                200,
+                json={"code": -101, "message": "账号未登录", "data": None},
+            )
+        )
+        async with httpx.AsyncClient() as client:
+            with pytest.raises(SessionExpiredError):
+                await fetch_favorites_page(client, "12345", 1, {"SESSDATA": "dead"})
 
 
 @pytest.mark.timeout(10)
@@ -392,3 +407,27 @@ class TestTransferAll:
         assert tally["added"] == 1
         assert tally["deleted"] == 0  # Delete failed
         assert tally["total"] == 1
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_not_logged_in_raises_session_expired(self, sample_config):
+        """deal POST returning -101 raises SessionExpiredError."""
+        respx.get(FAV_RESOURCE_LIST).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "code": 0,
+                    "data": {
+                        "medias": [_make_media(9001, "BV9a", "X")],
+                        "has_more": False,
+                    },
+                },
+            )
+        )
+        respx.post(FAV_RESOURCE_DEAL).mock(
+            return_value=httpx.Response(200, json={"code": -101, "message": "账号未登录"})
+        )
+
+        async with httpx.AsyncClient() as client:
+            with pytest.raises(SessionExpiredError):
+                await transfer_all(client, sample_config, _zero_limiter(), CircuitBreaker())

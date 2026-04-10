@@ -21,6 +21,10 @@ from src.api_endpoints import (
 from src.config import get_cookie_dict, get_csrf
 
 
+class SessionExpiredError(Exception):
+    """Raised when a -101 (not logged in) response is detected during transfer."""
+
+
 async def fetch_favorites_page(
     client: httpx.AsyncClient,
     media_id: str,
@@ -46,6 +50,11 @@ async def fetch_favorites_page(
         cookies=cookies,
     )
 
+    if result.get("code") == CODE_NOT_LOGGED_IN:
+        raise SessionExpiredError(
+            f"Sub-account session expired while reading favorites (page {page})"
+        )
+
     data = result.get("data", {})
     medias = data.get("medias", []) or []
     has_more = data.get("has_more", False)
@@ -63,7 +72,6 @@ async def fetch_favorites_page(
         page, media_id, len(items), has_more,
     )
     return items, has_more
-
 
 async def add_to_favorites(
     client: httpx.AsyncClient,
@@ -214,6 +222,10 @@ async def transfer_all(
             # Handle tuple return for error cases
             if isinstance(result, tuple):
                 status_str, status_code, api_code = result
+                if api_code == CODE_NOT_LOGGED_IN:
+                    raise SessionExpiredError(
+                        "Main account session expired during transfer"
+                    )
                 circuit_breaker.check_response(status_code, api_code)
                 tally["error"] += 1
             else:

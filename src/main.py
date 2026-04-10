@@ -1,7 +1,9 @@
-"""Main entry point: CLI menu, scheduler, and orchestration."""
+"""Main entry point: CLI argument dispatch, scheduler, and orchestration."""
 
+import argparse
 import asyncio
 import sys
+from datetime import datetime, timedelta, timezone
 
 import httpx
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -10,9 +12,12 @@ from loguru import logger
 
 from src.anti_ban import CircuitBreaker, RateLimiter
 from src.api_endpoints import DEFAULT_HEADERS
-from src.auth import login_account, refresh_cookie, _credentials_to_config_entry
+from src.auth import CookieExpiredError, login_account, refresh_cookie, _credentials_to_config_entry
 from src.config import load_config, save_config, get_cookie_dict
-from src.transfer import transfer_all
+from src.transfer import SessionExpiredError, transfer_all
+
+# Cookie check is rate-limited: at most once per 12 hours per account
+COOKIE_CHECK_MIN_INTERVAL_HOURS = 12
 
 # Configure loguru: console + rotating file
 LOG_FORMAT = (
@@ -42,11 +47,42 @@ def setup_logging() -> None:
     )
 
 
+async def _check_and_refresh_cookie(
+    client: httpx.AsyncClient,
+    account_key: str,
+    config: dict,
+    config_path: str,
+) -> dict:
+    """Check cookie status and refresh if needed, respecting the 12h rate limit.
+
+    Returns updated config. Raises CookieExpiredError if cookie is dead.
+    """
+    last_check_str = config.get(account_key, {}).get("last_cookie_check")
+    if last_check_str:
+        try:
+            last_check = datetime.fromisoformat(last_check_str)
+            if last_check.tzinfo is None:
+                last_check = last_check.replace(tzinfo=timezone.utc)
+            elapsed = datetime.now(timezone.utc) - last_check
+            if elapsed < timedelta(hours=COOKIE_CHECK_MIN_INTERVAL_HOURS):
+                logger.debug(
+                    "【{}】Cookie check skipped ({}h < {}h minimum interval)",
+                    account_key,
+                    round(elapsed.total_seconds() / 3600, 1),
+                    COOKIE_CHECK_MIN_INTERVAL_HOURS,
+                )
+                return config
+        except ValueError:
+            pass  # Malformed timestamp — proceed with check
+
+    return await refresh_cookie(client, account_key, config, config_path)
+
+
 async def run_transfer_job(config_path: str = "config.json") -> dict:
     """Execute one complete transfer cycle.
 
     1. Load config
-    2. Refresh cookies if needed
+    2. Check and refresh cookies (rate-limited to 1x/12h per account)
     3. Run transfer pipeline
     4. Log summary
 
@@ -64,19 +100,37 @@ async def run_transfer_job(config_path: str = "config.json") -> dict:
         return {"added": 0, "skipped": 0, "error": 0, "total": 0}
 
     async with httpx.AsyncClient(headers=DEFAULT_HEADERS) as client:
-        # Refresh cookies if needed
+        # Check and refresh cookies (rate-limited, CookieExpiredError aborts the job)
         for account_key in ("sub_account", "main_account"):
             try:
-                config = await refresh_cookie(client, account_key, config, config_path)
+                config = await _check_and_refresh_cookie(
+                    client, account_key, config, config_path
+                )
+            except CookieExpiredError as e:
+                logger.error(
+                    "【{}】Cookie expired: {}. Re-run 'setup' to re-login.",
+                    account_key, e,
+                )
+                return {"added": 0, "skipped": 0, "error": 0, "deleted": 0, "total": 0}
             except Exception as e:
-                logger.warning("Cookie refresh failed for {}: {}", account_key, e)
+                logger.warning("Cookie check failed for {}: {}", account_key, e)
 
         # Create rate limiter and circuit breaker
-        rate_limiter = RateLimiter()
+        ab = config.get("anti_ban", {})
+        rate_limiter = RateLimiter(
+            read_delay_range=(ab.get("read_delay_min", 3.0), ab.get("read_delay_max", 5.0)),
+            write_delay_range=(ab.get("write_delay_min", 10.0), ab.get("write_delay_max", 20.0)),
+        )
         circuit_breaker = CircuitBreaker(suspend_hours=4.0)
 
         # Run transfer
-        tally = await transfer_all(client, config, rate_limiter, circuit_breaker)
+        try:
+            tally = await transfer_all(client, config, rate_limiter, circuit_breaker)
+        except SessionExpiredError as e:
+            logger.error(
+                "Session expired during transfer: {}. Re-run 'setup' to re-login.", e
+            )
+            return {"added": 0, "skipped": 0, "error": 0, "deleted": 0, "total": 0}
 
     logger.info(
         "=== Transfer job complete: +{} added, ~{} skipped, !{} errors ===",
@@ -120,6 +174,12 @@ async def interactive_setup(config_path: str = "config.json") -> dict:
             "target_media_id": target_id,
         },
         "task_schedule": config.get("task_schedule", {"interval_hours": 24}),
+        "anti_ban": config.get("anti_ban", {
+            "read_delay_min": 3.0,
+            "read_delay_max": 5.0,
+            "write_delay_min": 10.0,
+            "write_delay_max": 20.0,
+        }),
     }
 
     save_config(config, config_path)
@@ -147,49 +207,48 @@ def start_scheduler(config_path: str = "config.json") -> None:
     return scheduler
 
 
-async def async_main() -> None:
-    """Async main menu loop."""
-    setup_logging()
-
-    while True:
-        print("\n" + "=" * 50)
-        print("  B站收藏夹跨端迁移工具")
-        print("=" * 50)
-        print("  1. 首次设置（扫码登录两个账号）")
-        print("  2. 立即执行一次转移")
-        print("  3. 启动定时守护模式")
-        print("  4. 退出")
-        print("=" * 50)
-
-        choice = input("\n请选择操作 [1-4]: ").strip()
-
-        if choice == "1":
-            await interactive_setup()
-        elif choice == "2":
-            await run_transfer_job()
-        elif choice == "3":
-            scheduler = start_scheduler()
-            print("\n定时任务已启动，按 Ctrl+C 停止...")
-            try:
-                # Run first job immediately, then let scheduler handle the rest
-                await run_transfer_job()
-                # Keep the event loop running for the scheduler
-                while True:
-                    await asyncio.sleep(60)
-            except KeyboardInterrupt:
-                scheduler.shutdown()
-                print("\n定时任务已停止")
-        elif choice == "4":
-            print("再见！")
-            break
-        else:
-            print("无效选择，请重试")
+async def async_daemon(config_path: str) -> None:
+    """Run the scheduler daemon: first job immediately, then on interval."""
+    scheduler = start_scheduler(config_path)
+    print("\n定时任务已启动，按 Ctrl+C 停止...")
+    try:
+        await run_transfer_job(config_path)
+        while True:
+            await asyncio.sleep(60)
+    except KeyboardInterrupt:
+        scheduler.shutdown()
+        print("\n定时任务已停止")
 
 
 def main() -> None:
-    """Synchronous entry point."""
+    """Synchronous entry point with subcommand dispatch."""
+    parser = argparse.ArgumentParser(
+        prog="python -m src.main",
+        description="B站收藏夹跨端迁移工具",
+    )
+    parser.add_argument(
+        "--config",
+        default="config.json",
+        metavar="PATH",
+        help="配置文件路径（默认: config.json）",
+    )
+    subparsers = parser.add_subparsers(dest="command", metavar="COMMAND")
+    subparsers.required = True
+
+    subparsers.add_parser("setup", help="首次设置：扫码登录两个账号并配置收藏夹ID")
+    subparsers.add_parser("transfer", help="立即执行一次迁移")
+    subparsers.add_parser("daemon", help="启动定时守护模式（先立即执行一次，再按间隔重复）")
+
+    args = parser.parse_args()
+    setup_logging()
+
     try:
-        asyncio.run(async_main())
+        if args.command == "setup":
+            asyncio.run(interactive_setup(args.config))
+        elif args.command == "transfer":
+            asyncio.run(run_transfer_job(args.config))
+        elif args.command == "daemon":
+            asyncio.run(async_daemon(args.config))
     except KeyboardInterrupt:
         print("\n程序已退出")
 

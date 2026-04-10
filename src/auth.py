@@ -2,6 +2,7 @@
 
 import asyncio
 import re
+from datetime import datetime, timezone
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -12,6 +13,7 @@ from loguru import logger
 
 from src.api_endpoints import (
     BILIBILI_RSA_PUBLIC_KEY,
+    CODE_NOT_LOGGED_IN,
     CONFIRM_REFRESH,
     COOKIE_INFO,
     COOKIE_REFRESH,
@@ -27,6 +29,10 @@ from src.config import (
     load_config,
     save_config,
 )
+
+
+class CookieExpiredError(Exception):
+    """Raised when a cookie is expired or has been force-invalidated by Bilibili."""
 
 
 async def generate_qr(client: httpx.AsyncClient) -> tuple[str, str]:
@@ -184,8 +190,13 @@ async def check_cookie_needs_refresh(
 
     Returns:
         (needs_refresh, timestamp) tuple
+
+    Raises:
+        CookieExpiredError: If the cookie is expired or force-invalidated (-101).
     """
     result = await api_get(client, COOKIE_INFO, cookies=cookies)
+    if result.get("code") == CODE_NOT_LOGGED_IN:
+        raise CookieExpiredError("Cookie is expired or has been invalidated (code -101)")
     data = result.get("data", {})
     needs_refresh = data.get("refresh", False)
     timestamp = data.get("timestamp", 0)
@@ -249,21 +260,32 @@ async def refresh_cookie(
 ) -> dict:
     """Full cookie refresh flow for one account.
 
-    1. Check if refresh needed
-    2. Generate correspondPath
-    3. Get refresh_csrf
-    4. POST refresh
-    5. Overwrite config.json immediately
+    1. Check if refresh needed (raises CookieExpiredError if cookie is dead)
+    2. Record last_cookie_check timestamp regardless of whether refresh was needed
+    3. If refresh needed: generate correspondPath, get refresh_csrf, POST refresh, confirm
+    4. Overwrite config.json immediately
 
     Returns:
-        Updated config dict
+        Updated config dict (always includes updated last_cookie_check)
+
+    Raises:
+        CookieExpiredError: If the cookie is expired or force-invalidated.
     """
     cookies = get_cookie_dict(account_key, config)
     needs_refresh, timestamp = await check_cookie_needs_refresh(client, cookies)
+    # CookieExpiredError propagates up — do NOT update last_cookie_check in that case
+
+    # Record that we successfully checked (regardless of whether refresh was needed)
+    now_str = datetime.now(timezone.utc).isoformat()
+    updated_config = {
+        **config,
+        account_key: {**config[account_key], "last_cookie_check": now_str},
+    }
 
     if not needs_refresh:
+        save_config(updated_config, config_path)
         logger.info("【{}】Cookie is still valid, no refresh needed", account_key)
-        return config
+        return updated_config
 
     # Generate correspondPath
     correspond_path = generate_correspond_path(timestamp)
@@ -298,7 +320,6 @@ async def refresh_cookie(
     new_refresh_token = new_data.get("refresh_token", refresh_token)
 
     # Extract new cookies from response (the POST response sets new cookies)
-    # We need to build new cookie string from the response
     new_cookie_dict = {**cookies}
     token_info = new_data.get("token", {})
     if token_info:
@@ -316,10 +337,9 @@ async def refresh_cookie(
         cookies=new_cookie_dict,
     )
 
-    # Update config immediately
-    updated_config = {**config}
+    # Update config with new credentials and check timestamp
     updated_config[account_key] = {
-        **config[account_key],
+        **updated_config[account_key],
         "cookie": build_cookie_string(new_cookie_dict),
         "refresh_token": new_refresh_token,
     }

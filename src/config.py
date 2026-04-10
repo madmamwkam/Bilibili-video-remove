@@ -20,17 +20,27 @@ DEFAULT_CONFIG = {
     "task_schedule": {
         "interval_hours": 24,
     },
+    "anti_ban": {
+        "read_delay_min": 3.0,
+        "read_delay_max": 5.0,
+        "write_delay_min": 10.0,
+        "write_delay_max": 20.0,
+    },
 }
 
 
 def load_config(path: str = "config.json") -> dict:
-    """Load config from JSON file. Returns default skeleton if file is missing."""
+    """Load config from JSON file. Returns default skeleton if file is missing.
+    Missing top-level sections are filled in from DEFAULT_CONFIG."""
     config_path = Path(path)
     if not config_path.exists():
         logger.info("Config file not found at {}, using defaults", path)
         return {**DEFAULT_CONFIG}
     with open(config_path, "r", encoding="utf-8") as f:
         config = json.load(f)
+    for key, default_val in DEFAULT_CONFIG.items():
+        if key not in config:
+            config[key] = default_val
     logger.info("Config loaded from {}", path)
     return config
 

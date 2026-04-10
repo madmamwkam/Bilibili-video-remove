@@ -15,6 +15,7 @@ from src.api_endpoints import (
     WWW_BASE,
 )
 from src.auth import (
+    CookieExpiredError,
     _extract_cookies_from_url,
     check_cookie_needs_refresh,
     generate_correspond_path,
@@ -180,6 +181,20 @@ class TestCheckCookieNeedsRefresh:
             needs, ts = await check_cookie_needs_refresh(client, {"SESSDATA": "x"})
         assert needs is False
 
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_raises_cookie_expired_on_not_logged_in(self):
+        """code=-101 from /cookie/info raises CookieExpiredError."""
+        respx.get(COOKIE_INFO).mock(
+            return_value=httpx.Response(
+                200,
+                json={"code": -101, "message": "账号未登录", "data": {}},
+            )
+        )
+        async with httpx.AsyncClient() as client:
+            with pytest.raises(CookieExpiredError):
+                await check_cookie_needs_refresh(client, {"SESSDATA": "dead"})
+
 
 @pytest.mark.timeout(10)
 class TestGetRefreshCsrf:
@@ -223,7 +238,26 @@ class TestRefreshCookie:
         config_path = str(tmp_path / "config.json")
         async with httpx.AsyncClient() as client:
             result = await refresh_cookie(client, "main_account", sample_config, config_path)
-        assert result == sample_config  # Unchanged
+        # Credentials unchanged
+        assert result["main_account"]["cookie"] == sample_config["main_account"]["cookie"]
+        assert result["main_account"]["refresh_token"] == sample_config["main_account"]["refresh_token"]
+        # Check timestamp recorded
+        assert "last_cookie_check" in result["main_account"]
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_cookie_expired_propagates(self, sample_config, tmp_path):
+        """CookieExpiredError from /cookie/info propagates through refresh_cookie."""
+        respx.get(COOKIE_INFO).mock(
+            return_value=httpx.Response(
+                200,
+                json={"code": -101, "message": "账号未登录", "data": {}},
+            )
+        )
+        config_path = str(tmp_path / "config.json")
+        async with httpx.AsyncClient() as client:
+            with pytest.raises(CookieExpiredError):
+                await refresh_cookie(client, "main_account", sample_config, config_path)
 
     @pytest.mark.asyncio
     @respx.mock
@@ -272,6 +306,7 @@ class TestRefreshCookie:
         assert "new_sessdata" in updated["main_account"]["cookie"]
         assert "new_bili_jct" in updated["main_account"]["cookie"]
         assert updated["main_account"]["refresh_token"] == "new_rt_123"
+        assert "last_cookie_check" in updated["main_account"]
 
 
 @pytest.mark.timeout(5)

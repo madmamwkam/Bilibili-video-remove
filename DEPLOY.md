@@ -29,10 +29,10 @@ pip install -r requirements.txt
 ### 首次设置
 
 ```bash
-python -m src.main
+python -m src.main setup
 ```
 
-选择 `1. 首次设置`，按提示操作：
+按提示操作：
 
 1. **扫码登录副账号**：用 B站App 扫描终端中的二维码（120秒超时）
 2. **扫码登录主账号**：同上
@@ -47,20 +47,22 @@ python -m src.main
 ### 手动执行一次转移
 
 ```bash
-python -m src.main
+python -m src.main transfer
 ```
-
-选择 `2. 立即执行一次转移`。
 
 ### 启动定时守护模式
 
 ```bash
-python -m src.main
+python -m src.main daemon
 ```
 
-选择 `3. 启动定时守护模式`。默认每 24 小时自动执行一次（可在 `config.json` 中修改 `interval_hours`）。
+立即执行一次后，按 `config.json` 中的 `interval_hours` 间隔重复执行。按 `Ctrl+C` 停止。
 
-按 `Ctrl+C` 停止守护进程。
+### 指定配置文件路径
+
+```bash
+python -m src.main --config /path/to/config.json transfer
+```
 
 ## 日志
 
@@ -84,9 +86,30 @@ python -m src.main
   },
   "task_schedule": {
     "interval_hours": 24
+  },
+  "anti_ban": {
+    "read_delay_min": 3.0,
+    "read_delay_max": 5.0,
+    "write_delay_min": 10.0,
+    "write_delay_max": 20.0
   }
 }
 ```
+
+### anti_ban 字段说明
+
+B站会对高频操作触发风控，`anti_ban` 控制每次请求之间的随机休眠时长，是防封号的核心参数。
+
+| 字段 | 默认值 | 含义 |
+|------|--------|------|
+| `read_delay_min` | `3.0` | 每翻一页收藏夹后，最少等待秒数 |
+| `read_delay_max` | `5.0` | 每翻一页收藏夹后，最多等待秒数 |
+| `write_delay_min` | `10.0` | 每次添加/删除操作后，最少等待秒数 |
+| `write_delay_max` | `20.0` | 每次添加/删除操作后，最多等待秒数 |
+
+实际等待时间在 `min` 和 `max` 之间随机取值，避免固定间隔被识别为机器人行为。
+
+> **建议**：不要将写操作延迟设置过低。官方 App 的正常收藏操作间隔约为数秒，`write_delay_min` 建议不低于 `5.0`。
 
 ## 常见问题
 

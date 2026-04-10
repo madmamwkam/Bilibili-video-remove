@@ -20,6 +20,12 @@ def sample_config():
         "task_schedule": {
             "interval_hours": 24,
         },
+        "anti_ban": {
+            "read_delay_min": 3.0,
+            "read_delay_max": 5.0,
+            "write_delay_min": 10.0,
+            "write_delay_max": 20.0,
+        },
     }
 
 
@@ -39,5 +45,11 @@ def empty_config():
         },
         "task_schedule": {
             "interval_hours": 24,
+        },
+        "anti_ban": {
+            "read_delay_min": 3.0,
+            "read_delay_max": 5.0,
+            "write_delay_min": 10.0,
+            "write_delay_max": 20.0,
         },
     }

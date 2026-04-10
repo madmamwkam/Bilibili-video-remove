@@ -13,7 +13,9 @@
       "Bash(\"./bilibili-videos-remove/Scripts/python\" -m pytest tests/test_integration.py -v --timeout=15)",
       "Bash(\"./bilibili-videos-remove/Scripts/python\" -m pytest tests/ -v --timeout=30)",
       "Bash(bilibili-videos-remove\\\\Scripts\\\\activate)",
-      "Bash(python -m pytest tests/ -v --timeout=30)"
+      "Bash(python -m pytest tests/ -v --timeout=30)",
+      "WebFetch(domain:socialsisteryi.github.io)",
+      "WebFetch(domain:github.com)"
     ]
   }
 }
