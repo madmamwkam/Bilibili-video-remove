@@ -198,6 +198,19 @@ class TestRemoveFromFavorites:
             )
         assert result is False
 
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_remove_network_error_returns_false(self):
+        """Server disconnect during delete returns False instead of crashing."""
+        respx.post(FAV_RESOURCE_DEAL).mock(
+            side_effect=httpx.RemoteProtocolError("Server disconnected")
+        )
+        async with httpx.AsyncClient() as client:
+            result = await remove_from_favorites(
+                client, 1001, "12345", {"SESSDATA": "x"}, "csrf_val"
+            )
+        assert result is False
+
 
 @pytest.mark.timeout(15)
 class TestTransferAll:
@@ -431,3 +444,37 @@ class TestTransferAll:
         async with httpx.AsyncClient() as client:
             with pytest.raises(SessionExpiredError):
                 await transfer_all(client, sample_config, _zero_limiter(), CircuitBreaker())
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_network_error_during_delete_does_not_crash(self, sample_config):
+        """Server disconnect on delete is logged as not-deleted; transfer continues."""
+        respx.get(FAV_RESOURCE_LIST).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "code": 0,
+                    "data": {
+                        "medias": [_make_media(5001, "BV5a", "Y")],
+                        "has_more": False,
+                    },
+                },
+            )
+        )
+        # add succeeds, but delete hits a server disconnect
+        respx.post(FAV_RESOURCE_DEAL).mock(
+            side_effect=[
+                httpx.Response(200, json={"code": 0, "message": "0"}),          # add ok
+                httpx.RemoteProtocolError("Server disconnected"),                # delete fails
+            ]
+        )
+
+        async with httpx.AsyncClient() as client:
+            tally = await transfer_all(
+                client, sample_config, _zero_limiter(), CircuitBreaker()
+            )
+
+        assert tally["added"] == 1
+        assert tally["deleted"] == 0  # delete failed silently
+        assert tally["error"] == 0
+        assert tally["total"] == 1

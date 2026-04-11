@@ -36,8 +36,15 @@ def load_config(path: str = "config.json") -> dict:
     if not config_path.exists():
         logger.info("Config file not found at {}, using defaults", path)
         return {**DEFAULT_CONFIG}
-    with open(config_path, "r", encoding="utf-8") as f:
-        config = json.load(f)
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            config = json.load(f)
+    except json.JSONDecodeError as exc:
+        logger.error("Config file corrupted ({}), using defaults: {}", path, exc)
+        return {**DEFAULT_CONFIG}
+    except (IOError, OSError) as exc:
+        logger.error("Failed to read config ({}), using defaults: {}", path, exc)
+        return {**DEFAULT_CONFIG}
     for key, default_val in DEFAULT_CONFIG.items():
         if key not in config:
             config[key] = default_val
@@ -48,15 +55,23 @@ def load_config(path: str = "config.json") -> dict:
 def save_config(data: dict, path: str = "config.json") -> None:
     """Save config to JSON file atomically (write to .tmp, then rename)."""
     config_path = Path(path)
+    config_path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = config_path.with_suffix(".json.tmp")
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    # Atomic rename (on Windows, need to remove target first if it exists)
-    if config_path.exists():
-        os.replace(str(tmp_path), str(config_path))
-    else:
-        tmp_path.rename(config_path)
-    logger.info("Config saved to {}", path)
+    try:
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        # Atomic rename (on Windows, need to remove target first if it exists)
+        if config_path.exists():
+            os.replace(str(tmp_path), str(config_path))
+        else:
+            tmp_path.rename(config_path)
+        logger.info("Config saved to {}", path)
+    except (IOError, OSError) as exc:
+        logger.error("Failed to save config to {}: {}", path, exc)
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def get_cookie_dict(account_key: str, config: dict) -> dict:

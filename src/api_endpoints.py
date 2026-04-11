@@ -49,6 +49,7 @@ CODE_ALREADY_EXISTS = 11007
 CODE_RISK_CONTROL = -412
 CODE_NOT_LOGGED_IN = -101
 CODE_ACCESS_DENIED = -403
+CODE_NETWORK_ERROR = -1  # sentinel for transport-level failures (no Bilibili response)
 
 
 async def api_get(
@@ -57,11 +58,23 @@ async def api_get(
     params: dict | None = None,
     cookies: dict | None = None,
 ) -> dict:
-    """Send GET request and return parsed JSON response."""
-    resp = await client.get(url, params=params, cookies=cookies)
-    data = resp.json()
-    logger.debug("GET {} -> code={}", url, data.get("code"))
-    return {"status_code": resp.status_code, **data}
+    """Send GET request and return parsed JSON response.
+
+    Network-level failures (disconnect, timeout, etc.) are caught and returned
+    as {"code": CODE_NETWORK_ERROR, ...} so callers never see an unhandled exception.
+    """
+    try:
+        resp = await client.get(url, params=params, cookies=cookies)
+        data = resp.json()
+        logger.debug("GET {} -> code={}", url, data.get("code"))
+        return {"status_code": resp.status_code, **data}
+    except httpx.TransportError as exc:
+        logger.warning("GET {} network error: {}", url, exc)
+        return {"code": CODE_NETWORK_ERROR, "message": str(exc), "status_code": 0}
+    except Exception as exc:
+        # Catches JSONDecodeError (HTML error page), UnicodeDecodeError, etc.
+        logger.error("GET {} unexpected error: {}", url, exc)
+        return {"code": CODE_NETWORK_ERROR, "message": str(exc), "status_code": 0}
 
 
 async def api_post(
@@ -70,13 +83,25 @@ async def api_post(
     data: dict | None = None,
     cookies: dict | None = None,
 ) -> dict:
-    """Send POST request (form-encoded) and return parsed JSON response."""
-    resp = await client.post(
-        url,
-        data=data,
-        cookies=cookies,
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
-    )
-    result = resp.json()
-    logger.debug("POST {} -> code={}", url, result.get("code"))
-    return {"status_code": resp.status_code, **result}
+    """Send POST request (form-encoded) and return parsed JSON response.
+
+    Network-level failures (disconnect, timeout, etc.) are caught and returned
+    as {"code": CODE_NETWORK_ERROR, ...} so callers never see an unhandled exception.
+    """
+    try:
+        resp = await client.post(
+            url,
+            data=data,
+            cookies=cookies,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        result = resp.json()
+        logger.debug("POST {} -> code={}", url, result.get("code"))
+        return {"status_code": resp.status_code, **result}
+    except httpx.TransportError as exc:
+        logger.warning("POST {} network error: {}", url, exc)
+        return {"code": CODE_NETWORK_ERROR, "message": str(exc), "status_code": 0}
+    except Exception as exc:
+        # Catches JSONDecodeError (HTML error page), UnicodeDecodeError, etc.
+        logger.error("POST {} unexpected error: {}", url, exc)
+        return {"code": CODE_NETWORK_ERROR, "message": str(exc), "status_code": 0}

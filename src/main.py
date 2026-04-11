@@ -131,6 +131,9 @@ async def run_transfer_job(config_path: str = "config.json") -> dict:
                 "Session expired during transfer: {}. Re-run 'setup' to re-login.", e
             )
             return {"added": 0, "skipped": 0, "error": 0, "deleted": 0, "total": 0}
+        except Exception as e:
+            logger.error("Unexpected error during transfer: {}", e, exc_info=True)
+            return {"added": 0, "skipped": 0, "error": 0, "deleted": 0, "total": 0}
 
     logger.info(
         "=== Transfer job complete: +{} added, ~{} skipped, !{} errors ===",
@@ -212,7 +215,10 @@ async def async_daemon(config_path: str) -> None:
     scheduler = start_scheduler(config_path)
     print("\n定时任务已启动，按 Ctrl+C 停止...")
     try:
-        await run_transfer_job(config_path)
+        try:
+            await run_transfer_job(config_path)
+        except Exception as e:
+            logger.error("Initial transfer job failed, daemon continues: {}", e, exc_info=True)
         while True:
             await asyncio.sleep(60)
     except KeyboardInterrupt:

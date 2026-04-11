@@ -61,8 +61,12 @@ async def fetch_favorites_page(
 
     items = []
     for media in medias:
+        aid = media.get("id")
+        if aid is None:
+            logger.warning("Skipping media entry with missing id: {}", media)
+            continue
         items.append({
-            "id": media.get("id"),  # numeric aid — used as rid
+            "id": aid,  # numeric aid — used as rid
             "bvid": media.get("bvid", ""),
             "title": media.get("title", ""),
         })
