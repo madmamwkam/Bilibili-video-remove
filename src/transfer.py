@@ -194,63 +194,69 @@ async def transfer_all(
     target_media_id = config["main_account"]["target_media_id"]
 
     tally = {"added": 0, "skipped": 0, "error": 0, "deleted": 0, "total": 0}
-    page = 1
 
     logger.info(
         "Starting transfer: source={} -> target={}",
         source_media_id, target_media_id,
     )
 
+    # Phase 1: Collect all items before making any changes.
+    # This prevents pagination drift — if we deleted items while paginating,
+    # remaining items would shift up and page N+1 would skip what was on page N.
+    all_items: list[dict] = []
+    page = 1
     while True:
-        # Check circuit breaker before each page
         if circuit_breaker.is_tripped:
             await circuit_breaker.wait_if_tripped()
 
         items, has_more = await fetch_favorites_page(
             client, source_media_id, page, sub_cookies,
         )
-
-        for item in items:
-            # Check circuit breaker before each write
-            if circuit_breaker.is_tripped:
-                await circuit_breaker.wait_if_tripped()
-
-            result = await add_to_favorites(
-                client, item["id"], target_media_id, main_cookies, csrf_main,
-            )
-
-            # Handle tuple return for error cases
-            if isinstance(result, tuple):
-                status_str, status_code, api_code = result
-                if api_code == CODE_NOT_LOGGED_IN:
-                    raise SessionExpiredError(
-                        "Main account session expired during transfer"
-                    )
-                circuit_breaker.check_response(status_code, api_code)
-                tally["error"] += 1
-            else:
-                tally[result] += 1
-
-                # Delete from source after successful add or skip (already exists)
-                if result in ("added", "skipped"):
-                    await rate_limiter.write_delay()
-                    deleted = await remove_from_favorites(
-                        client, item["id"], source_media_id, sub_cookies, csrf_sub,
-                    )
-                    if deleted:
-                        tally["deleted"] += 1
-
-            tally["total"] += 1
-
-            # Mandatory write delay (NO concurrent writes)
-            await rate_limiter.write_delay()
+        all_items.extend(items)
 
         if not has_more:
             break
 
-        # Mandatory read delay between pages
         await rate_limiter.read_delay()
         page += 1
+
+    logger.info("Collected {} items from source folder", len(all_items))
+
+    # Phase 2: Process collected items — add to target, then delete from source.
+    for item in all_items:
+        # Check circuit breaker before each write
+        if circuit_breaker.is_tripped:
+            await circuit_breaker.wait_if_tripped()
+
+        result = await add_to_favorites(
+            client, item["id"], target_media_id, main_cookies, csrf_main,
+        )
+
+        # Handle tuple return for error cases
+        if isinstance(result, tuple):
+            status_str, status_code, api_code = result
+            if api_code == CODE_NOT_LOGGED_IN:
+                raise SessionExpiredError(
+                    "Main account session expired during transfer"
+                )
+            circuit_breaker.check_response(status_code, api_code)
+            tally["error"] += 1
+        else:
+            tally[result] += 1
+
+            # Delete from source after successful add or skip (already exists)
+            if result in ("added", "skipped"):
+                await rate_limiter.write_delay()
+                deleted = await remove_from_favorites(
+                    client, item["id"], source_media_id, sub_cookies, csrf_sub,
+                )
+                if deleted:
+                    tally["deleted"] += 1
+
+        tally["total"] += 1
+
+        # Mandatory write delay (NO concurrent writes)
+        await rate_limiter.write_delay()
 
     logger.info(
         "Transfer complete: {} added, {} skipped, {} deleted, {} errors (total: {})",
