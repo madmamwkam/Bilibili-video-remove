@@ -186,6 +186,14 @@ ps aux | grep "src.main"
 
 ## 更新日志
 
+### v5（2026-04-13）
+
+**Bug 修复**
+
+- **Cookie 刷新失败（correspond 404）**：RSA 公钥错误、编码方式错误（base64url → hex）、时间戳来源错误（`/cookie/info` 返回值 → `time.time()*1000`），导致 correspond 接口始终返回 404，cookie 无法自动刷新。已全部修正，参照 bilibili-api 官方实现。
+
+---
+
 ### v4（2026-04-13）
 
 **Bug 修复**

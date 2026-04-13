@@ -36,10 +36,10 @@ DEFAULT_HEADERS = {
 # --- Bilibili RSA public key for cookie refresh correspondPath ---
 BILIBILI_RSA_PUBLIC_KEY = (
     "-----BEGIN PUBLIC KEY-----\n"
-    "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDLgd2OAkcGVmdomRMADWfKS0vf\n"
-    "MElidUmaQByJRwVMVe7DJslth+sFgqecO1FDLMRW06sEnMHfiZT9MjNzIVhNHjhH\n"
-    "nVB3D3mtaDYbE8p7Ym2CGpBsYCI3fSyHMmAu+xFN0Q0MAVmBtqoFIjsN0NNYhSlj\n"
-    "5pR2UMGFmulti+bMYwIDAQAB\n"
+    "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDLgd2OAkcGVtoE3ThUREbio0Eg\n"
+    "Uc/prcajMKXvkCKFCWhJYJcLkcM2DKKcSeFpD/j6Boy538YXnR6VhcuUJOhH2x71\n"
+    "nzPjfdTcqMz7djHum0qSZA0AyCBDABUqCrfNgCiJ00Ra7GmRj+YCK1NJEuewlb40\n"
+    "JNrRuoEUXpabUzGB8QIDAQAB\n"
     "-----END PUBLIC KEY-----"
 )
 

@@ -133,16 +133,16 @@ class TestPollQrLogin:
 @pytest.mark.timeout(5)
 class TestGenerateCorrespondPath:
     def test_returns_hex_string(self):
-        result = generate_correspond_path(1700000000000)
+        result = generate_correspond_path()
         assert isinstance(result, str)
         # RSA 1024-bit key -> 128 bytes -> 256 hex chars
         assert len(result) == 256
         # Should be valid hex
         int(result, 16)
 
-    def test_different_timestamps_produce_different_results(self):
-        r1 = generate_correspond_path(1700000000000)
-        r2 = generate_correspond_path(1700000000001)
+    def test_different_calls_produce_different_results(self):
+        r1 = generate_correspond_path()
+        r2 = generate_correspond_path()
         assert r1 != r2
 
 

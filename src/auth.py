@@ -1,7 +1,10 @@
 """Dual-account QR code login and cookie refresh for Bilibili."""
 
 import asyncio
+import base64
+import binascii
 import re
+import time
 from datetime import datetime, timezone
 from urllib.parse import parse_qs, urlparse
 
@@ -205,12 +208,13 @@ async def check_cookie_needs_refresh(
     return needs_refresh, timestamp
 
 
-def generate_correspond_path(timestamp: int) -> str:
+def generate_correspond_path() -> str:
     """Generate correspondPath by RSA-OAEP encrypting 'refresh_{timestamp}'.
 
-    Uses Bilibili's known public key.
+    Uses current millisecond timestamp and hex encoding, per bilibili-api spec.
     """
-    message = f"refresh_{timestamp}".encode("utf-8")
+    ts = round(time.time() * 1000)
+    message = f"refresh_{ts}".encode("utf-8")
     public_key = serialization.load_pem_public_key(
         BILIBILI_RSA_PUBLIC_KEY.encode("utf-8")
     )
@@ -222,7 +226,7 @@ def generate_correspond_path(timestamp: int) -> str:
             label=None,
         ),
     )
-    return encrypted.hex()
+    return binascii.b2a_hex(encrypted).decode()
 
 
 async def get_refresh_csrf(
@@ -241,9 +245,11 @@ async def get_refresh_csrf(
         The refresh_csrf token string
     """
     url = f"{WWW_BASE}/correspond/1/{correspond_path}"
-    resp = await client.get(url, cookies=cookies)
+    cookie_header = "; ".join(f"{k}={v}" for k, v in cookies.items())
+    resp = await client.get(url, headers={"Cookie": cookie_header})
     html = resp.text
     # Extract refresh_csrf from HTML using regex
+    logger.debug("correspond page status={}, body[:500]={}", resp.status_code, html[:500])
     match = re.search(r'<div\s+id="1-name">([^<]+)</div>', html)
     if not match:
         raise RuntimeError("Failed to extract refresh_csrf from correspond page")
@@ -288,7 +294,7 @@ async def refresh_cookie(
         return updated_config
 
     # Generate correspondPath
-    correspond_path = generate_correspond_path(timestamp)
+    correspond_path = generate_correspond_path()
 
     # Get refresh_csrf
     refresh_csrf = await get_refresh_csrf(client, correspond_path, cookies)
