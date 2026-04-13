@@ -1,0 +1,16 @@
+((venv) ) root@localhost:~/Desktop/Bilibili-video-remove# python -m src.main daemon
+
+
+
+
+2026-04-13 19:17:57 | INFO     | src.config:load_config:51 - Config loaded from config.json
+2026-04-13 19:17:57 | INFO     | __main__:async_daemon:230 - Daemon started: transfer every 4 hours
+
+定时任务已启动，每 4 小时执行一次，按 Ctrl+C 停止...
+2026-04-13 19:17:57 | INFO     | src.config:load_config:51 - Config loaded from config.json
+2026-04-13 19:17:57 | INFO     | src.config:load_config:51 - Config loaded from config.json
+2026-04-13 19:17:59 | INFO     | src.auth:check_cookie_needs_refresh:204 - Cookie needs refresh (timestamp=1776079084971)
+2026-04-13 19:17:59 | WARNING  | __main__:run_transfer_job:122 - Cookie check failed for sub_account: Failed to extract refresh_csrf from correspond page
+2026-04-13 19:17:59 | INFO     | src.auth:check_cookie_needs_refresh:204 - Cookie needs refresh (timestamp=1776079085429)
+2026-04-13 19:18:00 | WARNING  | __main__:run_transfer_job:122 - Cookie check failed for main_account: Failed to extract refresh_csrf from correspond page
+2026-04-13 19:18:00 | INFO     | src.transfer:transfer_all:202 - Starting transfer: source=3943087963 -> target=3570483386

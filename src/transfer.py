@@ -10,6 +10,7 @@ from loguru import logger
 
 from src.anti_ban import CircuitBreaker, RateLimiter
 from src.api_endpoints import (
+    CODE_ACCESS_DENIED,
     CODE_ALREADY_EXISTS,
     CODE_NOT_LOGGED_IN,
     CODE_SUCCESS,
@@ -33,15 +34,11 @@ async def fetch_favorites_page(
 ) -> tuple[list[dict], bool]:
     """Fetch one page of favorites from a folder.
 
-    Args:
-        client: HTTP client
-        media_id: Source favorites folder ID
-        page: Page number (1-based)
-        cookies: Sub-account cookies dict
-
     Returns:
-        (items, has_more) where items is a list of
-        {"id": aid, "bvid": "BVxxx", "title": "..."} dicts
+        (items, has_more). Returns ([], False) on API error (logged as warning).
+
+    Raises:
+        SessionExpiredError: If -101 (not logged in) is returned.
     """
     result = await api_get(
         client,
@@ -50,12 +47,21 @@ async def fetch_favorites_page(
         cookies=cookies,
     )
 
-    if result.get("code") == CODE_NOT_LOGGED_IN:
+    api_code = result.get("code", 0)
+
+    if api_code == CODE_NOT_LOGGED_IN:
         raise SessionExpiredError(
             f"Sub-account session expired while reading favorites (page {page})"
         )
 
-    data = result.get("data", {})
+    if api_code != CODE_SUCCESS:
+        logger.warning(
+            "fetch_favorites_page error: code={}, status={}, msg={}",
+            api_code, result.get("status_code"), result.get("message", ""),
+        )
+        return [], False
+
+    data = result.get("data") or {}
     medias = data.get("medias", []) or []
     has_more = data.get("has_more", False)
 
@@ -66,7 +72,7 @@ async def fetch_favorites_page(
             logger.warning("Skipping media entry with missing id: {}", media)
             continue
         items.append({
-            "id": aid,  # numeric aid — used as rid
+            "id": aid,
             "bvid": media.get("bvid", ""),
             "title": media.get("title", ""),
         })
