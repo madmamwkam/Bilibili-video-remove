@@ -3,7 +3,13 @@
 import argparse
 import asyncio
 import sys
+import warnings
 from datetime import datetime, timedelta, timezone
+
+# Suppress tzlocal timezone-mismatch warning from APScheduler on Termux/proot-distro.
+# Our code uses timezone.utc explicitly everywhere, so local timezone misconfiguration
+# is harmless but generates noise on every startup.
+warnings.filterwarnings("ignore", message="Timezone offset does not match system offset")
 
 import httpx
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -211,18 +217,43 @@ def start_scheduler(config_path: str = "config.json") -> None:
 
 
 async def async_daemon(config_path: str) -> None:
-    """Run the scheduler daemon: first job immediately, then on interval."""
-    scheduler = start_scheduler(config_path)
-    print("\n定时任务已启动，按 Ctrl+C 停止...")
+    """Run the transfer daemon.
+
+    Uses 60-second polling with wall-clock time comparison instead of a single
+    long asyncio.sleep.  This ensures the scheduled time is always respected
+    even after Android Doze / SIGSTOP suspensions, where CLOCK_MONOTONIC stops
+    advancing but CLOCK_REALTIME (datetime.now) continues.
+    """
+    config = load_config(config_path)
+    interval_hours = config.get("task_schedule", {}).get("interval_hours", 24)
+
+    logger.info("Daemon started: transfer every {} hours", interval_hours)
+    print(f"\n定时任务已启动，每 {interval_hours} 小时执行一次，按 Ctrl+C 停止...")
+
+    next_run_at = datetime.now(timezone.utc)  # trigger immediately on first iteration
+
     try:
-        try:
-            await run_transfer_job(config_path)
-        except Exception as e:
-            logger.error("Initial transfer job failed, daemon continues: {}", e, exc_info=True)
         while True:
+            if datetime.now(timezone.utc) >= next_run_at:
+                # Re-read interval so config changes take effect without restart
+                config = load_config(config_path)
+                interval_hours = config.get("task_schedule", {}).get("interval_hours", 24)
+
+                try:
+                    await run_transfer_job(config_path)
+                except Exception as e:
+                    logger.error("Transfer job failed, daemon continues: {}", e, exc_info=True)
+
+                next_run_at = datetime.now(timezone.utc) + timedelta(hours=interval_hours)
+                logger.info(
+                    "Next transfer at {} UTC (in {} hours)",
+                    next_run_at.strftime("%Y-%m-%d %H:%M:%S"),
+                    interval_hours,
+                )
+
+            # Short sleep — actual firing time governed by wall-clock above
             await asyncio.sleep(60)
-    except KeyboardInterrupt:
-        scheduler.shutdown()
+    except (KeyboardInterrupt, asyncio.CancelledError):
         print("\n定时任务已停止")
 
 

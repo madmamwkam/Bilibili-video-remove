@@ -60,11 +60,8 @@ def save_config(data: dict, path: str = "config.json") -> None:
     try:
         with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-        # Atomic rename (on Windows, need to remove target first if it exists)
-        if config_path.exists():
-            os.replace(str(tmp_path), str(config_path))
-        else:
-            tmp_path.rename(config_path)
+        # Atomic rename — Path.replace() handles existing or absent target on all platforms
+        tmp_path.replace(config_path)
         logger.info("Config saved to {}", path)
     except (IOError, OSError) as exc:
         logger.error("Failed to save config to {}: {}", path, exc)

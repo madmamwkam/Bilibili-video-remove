@@ -16,7 +16,8 @@
       "Bash(python -m pytest tests/ -v --timeout=30)",
       "WebFetch(domain:socialsisteryi.github.io)",
       "WebFetch(domain:github.com)",
-      "Bash(bilibili-videos-remove/Scripts/python -m pytest tests/ -v --timeout=30)"
+      "Bash(bilibili-videos-remove/Scripts/python -m pytest tests/ -v --timeout=30)",
+      "WebFetch(domain:wiki.termux.com)"
     ]
   }
 }
