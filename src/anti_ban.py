@@ -5,7 +5,7 @@ import random
 
 from loguru import logger
 
-from src.api_endpoints import CODE_RISK_CONTROL
+from src.api_endpoints import CODE_ACCESS_DENIED, CODE_RISK_CONTROL
 
 
 class RateLimiter:
@@ -75,7 +75,7 @@ class CircuitBreaker:
         Returns:
             True if circuit breaker was tripped by this response.
         """
-        if status_code == 403 or api_code == CODE_RISK_CONTROL:
+        if status_code == 403 or api_code in (CODE_RISK_CONTROL, CODE_ACCESS_DENIED):
             self._tripped = True
             logger.error(
                 "Circuit breaker TRIPPED! status={}, api_code={}",

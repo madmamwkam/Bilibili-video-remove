@@ -46,7 +46,7 @@ class TestFetchFavoritesPage:
             )
         )
         async with httpx.AsyncClient() as client:
-            items, has_more = await fetch_favorites_page(
+            items, has_more, _ = await fetch_favorites_page(
                 client, "12345", 1, {"SESSDATA": "x"}
             )
         assert len(items) == 2
@@ -71,7 +71,7 @@ class TestFetchFavoritesPage:
             )
         )
         async with httpx.AsyncClient() as client:
-            items, has_more = await fetch_favorites_page(
+            items, has_more, _ = await fetch_favorites_page(
                 client, "12345", 2, {"SESSDATA": "x"}
             )
         assert len(items) == 1
@@ -90,7 +90,7 @@ class TestFetchFavoritesPage:
             )
         )
         async with httpx.AsyncClient() as client:
-            items, has_more = await fetch_favorites_page(
+            items, has_more, _ = await fetch_favorites_page(
                 client, "12345", 1, {"SESSDATA": "x"}
             )
         assert items == []

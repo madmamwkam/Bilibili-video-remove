@@ -59,7 +59,7 @@ async def fetch_favorites_page(
             "fetch_favorites_page error: code={}, status={}, msg={}",
             api_code, result.get("status_code"), result.get("message", ""),
         )
-        return [], False
+        return [], False, api_code
 
     data = result.get("data") or {}
     medias = data.get("medias", []) or []
@@ -81,7 +81,7 @@ async def fetch_favorites_page(
         "Fetched page {} of folder {}: {} items, has_more={}",
         page, media_id, len(items), has_more,
     )
-    return items, has_more
+    return items, has_more, CODE_SUCCESS
 
 async def add_to_favorites(
     client: httpx.AsyncClient,
@@ -219,9 +219,14 @@ async def transfer_all(
         if circuit_breaker.is_tripped:
             await circuit_breaker.wait_if_tripped()
 
-        items, has_more = await fetch_favorites_page(
+        items, has_more, page_code = await fetch_favorites_page(
             client, source_media_id, page, sub_cookies,
         )
+        if page_code != CODE_SUCCESS:
+            circuit_breaker.check_response(200, page_code)
+            if circuit_breaker.is_tripped:
+                await circuit_breaker.wait_if_tripped()
+            break
         all_items.extend(items)
 
         if not has_more:
