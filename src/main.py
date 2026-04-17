@@ -136,6 +136,11 @@ async def run_transfer_job(config_path: str = "config.json") -> dict:
             logger.error(
                 "Session expired during transfer: {}. Re-run 'setup' to re-login.", e
             )
+            # Clear last_cookie_check for both accounts so next run re-checks immediately
+            for key in ("sub_account", "main_account"):
+                if "last_cookie_check" in config.get(key, {}):
+                    config[key] = {k: v for k, v in config[key].items() if k != "last_cookie_check"}
+            save_config(config, config_path)
             return {"added": 0, "skipped": 0, "error": 0, "deleted": 0, "total": 0}
         except Exception as e:
             logger.error("Unexpected error during transfer: {}", e, exc_info=True)
