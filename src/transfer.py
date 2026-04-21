@@ -217,15 +217,13 @@ async def transfer_all(
     page = 1
     while True:
         if circuit_breaker.is_tripped:
-            await circuit_breaker.wait_if_tripped()
+            break
 
         items, has_more, page_code = await fetch_favorites_page(
             client, source_media_id, page, sub_cookies,
         )
         if page_code != CODE_SUCCESS:
             circuit_breaker.check_response(200, page_code)
-            if circuit_breaker.is_tripped:
-                await circuit_breaker.wait_if_tripped()
             break
         all_items.extend(items)
 
@@ -239,9 +237,8 @@ async def transfer_all(
 
     # Phase 2: Process collected items — add to target, then delete from source.
     for item in all_items:
-        # Check circuit breaker before each write
         if circuit_breaker.is_tripped:
-            await circuit_breaker.wait_if_tripped()
+            break
 
         result = await add_to_favorites(
             client, item["id"], target_media_id, main_cookies, csrf_main,
