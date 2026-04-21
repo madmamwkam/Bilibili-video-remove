@@ -303,8 +303,7 @@ async def refresh_cookie(
     old_csrf = cookies.get("bili_jct", "")
     refresh_token = config[account_key].get("refresh_token", "")
 
-    result = await api_post(
-        client,
+    resp = await client.post(
         COOKIE_REFRESH,
         data={
             "csrf": old_csrf,
@@ -313,7 +312,9 @@ async def refresh_cookie(
             "refresh_token": refresh_token,
         },
         cookies=cookies,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
+    result = resp.json()
 
     if result.get("code") != 0:
         raise RuntimeError(
@@ -321,16 +322,14 @@ async def refresh_cookie(
             f"code={result.get('code')}, msg={result.get('message')}"
         )
 
-    # Extract new tokens from response
     new_data = result.get("data", {})
     new_refresh_token = new_data.get("refresh_token", refresh_token)
 
-    # Extract new cookies from response (the POST response sets new cookies)
+    # New cookies are delivered via Set-Cookie response headers
     new_cookie_dict = {**cookies}
-    token_info = new_data.get("token", {})
-    if token_info:
-        new_cookie_dict["SESSDATA"] = token_info.get("SESSDATA", cookies.get("SESSDATA", ""))
-        new_cookie_dict["bili_jct"] = token_info.get("bili_jct", cookies.get("bili_jct", ""))
+    for key in ("SESSDATA", "bili_jct", "DedeUserID"):
+        if key in resp.cookies:
+            new_cookie_dict[key] = resp.cookies[key]
 
     # Confirm the refresh (invalidate old refresh_token)
     await api_post(

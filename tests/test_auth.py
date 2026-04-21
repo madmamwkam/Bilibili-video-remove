@@ -277,20 +277,16 @@ class TestRefreshCookie:
             )
         )
 
-        # 3. Cookie refresh POST -> success
+        # 3. Cookie refresh POST -> success with Set-Cookie headers
         respx.post(COOKIE_REFRESH).mock(
             return_value=httpx.Response(
                 200,
-                json={
-                    "code": 0,
-                    "data": {
-                        "refresh_token": "new_rt_123",
-                        "token": {
-                            "SESSDATA": "new_sessdata",
-                            "bili_jct": "new_bili_jct",
-                        },
-                    },
-                },
+                json={"code": 0, "data": {"refresh_token": "new_rt_123"}},
+                headers=[
+                    ("Set-Cookie", "SESSDATA=new_sessdata; Path=/; Domain=.bilibili.com"),
+                    ("Set-Cookie", "bili_jct=new_bili_jct; Path=/; Domain=.bilibili.com"),
+                    ("Set-Cookie", "DedeUserID=222; Path=/; Domain=.bilibili.com"),
+                ],
             )
         )
 
