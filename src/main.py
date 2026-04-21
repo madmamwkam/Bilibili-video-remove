@@ -182,8 +182,21 @@ async def interactive_setup(config_path: str = "config.json") -> dict:
         termios.tcflush(sys.stdin, termios.TCIFLUSH)
     except Exception:
         pass
-    source_id = input("请输入副账号源收藏夹ID (source_media_id): ").strip()
-    target_id = input("请输入主账号目标收藏夹ID (target_media_id): ").strip()
+
+    prev_source = config.get("sub_account", {}).get("source_media_id", "")
+    prev_target = config.get("main_account", {}).get("target_media_id", "")
+
+    if prev_source:
+        ans = input(f"沿用上次源收藏夹ID [{prev_source}]？(回车确认/输入新ID): ").strip()
+        source_id = ans if ans else prev_source
+    else:
+        source_id = input("请输入副账号源收藏夹ID (source_media_id): ").strip()
+
+    if prev_target:
+        ans = input(f"沿用上次目标收藏夹ID [{prev_target}]？(回车确认/输入新ID): ").strip()
+        target_id = ans if ans else prev_target
+    else:
+        target_id = input("请输入主账号目标收藏夹ID (target_media_id): ").strip()
 
     # Build config
     config = {
