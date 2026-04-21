@@ -176,6 +176,12 @@ async def interactive_setup(config_path: str = "config.json") -> dict:
 
     # Get folder IDs
     print("\n[3/4] 配置收藏夹ID")
+    # Flush stdin to discard any buffered input from QR scan phase
+    import sys, termios
+    try:
+        termios.tcflush(sys.stdin, termios.TCIFLUSH)
+    except Exception:
+        pass
     source_id = input("请输入副账号源收藏夹ID (source_media_id): ").strip()
     target_id = input("请输入主账号目标收藏夹ID (target_media_id): ").strip()
 
