@@ -4,6 +4,11 @@ import argparse
 import asyncio
 import sys
 import warnings
+try:
+    import termios
+    _HAS_TERMIOS = True
+except ImportError:
+    _HAS_TERMIOS = False
 from datetime import datetime, timedelta, timezone
 
 # Suppress tzlocal timezone-mismatch warning from APScheduler on Termux/proot-distro.
@@ -177,11 +182,11 @@ async def interactive_setup(config_path: str = "config.json") -> dict:
     # Get folder IDs
     print("\n[3/4] 配置收藏夹ID")
     # Flush stdin to discard any buffered input from QR scan phase
-    import sys, termios
-    try:
-        termios.tcflush(sys.stdin, termios.TCIFLUSH)
-    except Exception:
-        pass
+    if _HAS_TERMIOS:
+        try:
+            termios.tcflush(sys.stdin, termios.TCIFLUSH)
+        except Exception:
+            pass
 
     prev_source = config.get("sub_account", {}).get("source_media_id", "")
     prev_target = config.get("main_account", {}).get("target_media_id", "")
